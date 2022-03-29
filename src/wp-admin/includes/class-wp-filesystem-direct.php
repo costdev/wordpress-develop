@@ -229,7 +229,8 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 	public function owner( $file ) {
 		$owneruid = @fileowner( $file );
 
-		if ( ! $owneruid ) {
+		// 'root' is `0`.
+		if ( false === $owneruid ) {
 			return false;
 		}
 
@@ -271,7 +272,8 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 	public function group( $file ) {
 		$gid = @filegroup( $file );
 
-		if ( ! $gid ) {
+		// root is `0`.
+		if ( false === $gid ) {
 			return false;
 		}
 

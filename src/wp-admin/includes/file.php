@@ -1964,7 +1964,7 @@ function copy_dir( $from, $to, $skip_list = array() ) {
  * @param bool   $overwrite Optional. Whether to overwrite the destination directory if it exists.
  *                          Default false.
 
- * @return true|WP_Error True on success, WP_Error on failure.
+ * @return bool|WP_Error True on success, False or WP_Error on failure.
  */
 function move_dir( $from, $to, $overwrite = false ) {
 	global $wp_filesystem;
@@ -1978,6 +1978,10 @@ function move_dir( $from, $to, $overwrite = false ) {
 				"<code>$to</code>"
 			)
 		);
+	}
+
+	if ( trailingslashit( $from ) === trailingslashit( $to ) ) {
+		return false;
 	}
 
 	if ( $wp_filesystem->move( $from, $to, $overwrite ) ) {

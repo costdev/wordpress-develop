@@ -1980,7 +1980,7 @@ function move_dir( $from, $to, $overwrite = false ) {
 		);
 	}
 
-	if ( trailingslashit( $from ) === trailingslashit( $to ) ) {
+	if ( trailingslashit( strtolower( $from ) ) === trailingslashit( strtolower( $to ) ) ) {
 		return new WP_Error(
 			'source_destination_same_move_dir',
 			__( 'The source and destination are the same.' )

@@ -218,19 +218,28 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 			return false;
 		}
 
-		if ( ! $recursive ) {
-			return chown( $file, $owner );
-		}
+		$result = chown( $file, $owner );
 
-		if ( ! $this->is_dir( $file ) ) {
-			return chown( $file, $owner );
+		if ( ! $recursive || ! $this->is_dir( $file ) ) {
+			return $result;
 		}
 
 		// Is a directory, and we want recursive.
-		$filelist = $this->dirlist( $file );
+		$filelist = $this->dirlist( $file, true, true );
 
-		foreach ( $filelist as $filename ) {
-			$this->chown( $file . '/' . $filename, $owner, $recursive );
+		if ( false === $filelist ) {
+			return true;
+		}
+
+		foreach ( $filelist as $filename => $filemeta ) {
+			chown( $file . $filename, $owner );
+
+			if ( 'd' === $filemeta['type'] ) {
+				$subdir = trailingslashit( $file . $filename );
+				foreach ( $filemeta['files'] as $sub_filename => $sub_file_data ) {
+					$this->chown( $subdir . $sub_filename, $owner, true );
+				}
+			}
 		}
 
 		return true;

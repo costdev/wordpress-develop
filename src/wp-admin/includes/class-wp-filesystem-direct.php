@@ -127,20 +127,25 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 			return false;
 		}
 
-		if ( ! $recursive ) {
-			return chgrp( $file, $group );
-		}
+		$result = chgrp( $file, $group );
 
-		if ( ! $this->is_dir( $file ) ) {
-			return chgrp( $file, $group );
+		if ( ! $recursive || ! $this->is_dir( $file ) ) {
+			return $result;
 		}
 
 		// Is a directory, and we want recursive.
 		$file     = trailingslashit( $file );
-		$filelist = $this->dirlist( $file );
+		$filelist = $this->dirlist( $file, true, true );
 
-		foreach ( $filelist as $filename ) {
-			$this->chgrp( $file . $filename, $group, $recursive );
+		foreach ( (array) $filelist as $filename => $filemeta ) {
+			chgrp( $file . $filename, $group );
+
+			if ( 'd' === $filemeta['type'] ) {
+				$subdir = trailingslashit( $file . $filename );
+				foreach ( $filemeta['files'] as $sub_filename => $sub_file_data ) {
+					$this->chgrp( $subdir . $sub_filename, $group, true );
+				}
+			}
 		}
 
 		return true;

@@ -174,16 +174,29 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 			}
 		}
 
+		$result = chmod( $file, $mode );
+
 		if ( ! $recursive || ! $this->is_dir( $file ) ) {
-			return chmod( $file, $mode );
+			return $result;
 		}
 
 		// Is a directory, and we want recursive.
 		$file     = trailingslashit( $file );
-		$filelist = $this->dirlist( $file );
+		$filelist = $this->dirlist( $file, true, true );
 
-		foreach ( (array) $filelist as $filename => $filemeta ) {
-			$this->chmod( $file . $filename, $mode, $recursive );
+		if ( false === $filelist ) {
+			return true;
+		}
+
+		foreach ( $filelist as $filename => $filemeta ) {
+			chmod( $file . $filename, $mode );
+
+			if ( 'd' === $filemeta['type'] ) {
+				$subdir = trailingslashit( $file . $filename );
+				foreach ( $filemeta['files'] as $sub_filename => $sub_file_data ) {
+					$this->chmod( $subdir . $sub_filename, $mode, true );
+				}
+			}
 		}
 
 		return true;

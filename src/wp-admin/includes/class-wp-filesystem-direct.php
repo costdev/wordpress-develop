@@ -656,7 +656,7 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 			return false;
 		}
 
-		$dir = dir( $path );
+		$dir = @dir( $path );
 
 		if ( ! $dir ) {
 			return false;

@@ -367,6 +367,10 @@ class WP_Filesystem_Direct extends WP_Filesystem_Base {
 			return false;
 		}
 
+		if ( untrailingslashit( strtolower( $source ) ) === untrailingslashit( strtolower( $destination ) ) ) {
+			return false;
+		}
+
 		if ( $overwrite && $this->exists( $destination ) && ! $this->delete( $destination, true ) ) {
 			// Can't overwrite if the destination couldn't be deleted.
 			return false;

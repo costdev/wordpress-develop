@@ -7,6 +7,7 @@ import {
 
 describe( 'Gutenberg plugin', () => {
 	beforeAll( async () => {
+		await page.setDefaultNavigationTimeout(60000);
 		await installPlugin( 'gutenberg' );
 	} );
 

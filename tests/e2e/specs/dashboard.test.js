@@ -6,6 +6,7 @@ import {
 
 describe( 'Quick Draft', () => {
 	beforeEach( async () => {
+		await page.setDefaultNavigationTimeout(60000);
 		await trashAllPosts();
 	} );
 

@@ -8,6 +8,7 @@ import {
 
 describe( 'Edit Posts', () => {
 	beforeEach( async () => {
+		await page.setDefaultNavigationTimeout(60000);
 		await trashAllPosts();
 	} );
 

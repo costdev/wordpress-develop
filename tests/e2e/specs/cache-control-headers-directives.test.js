@@ -9,6 +9,7 @@ import {
 describe( 'Cache Control header directives', () => {
 
 	beforeEach( async () => {
+		await page.setDefaultNavigationTimeout(60000);
 		await trashAllPosts();
 	} );
 

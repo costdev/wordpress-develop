@@ -1,29 +1,7 @@
 name: Performance Tests
 
 on:
-  push:
-    branches:
-      - trunk
-      - '6.[2-9]'
-      - '[7-9].[0-9]'
-    tags:
-      - '[0-9]+.[0-9]'
-      - '[0-9]+.[0-9].[0-9]+'
-      - '![45].[0-9].[0-9]+'
-      - '!6.[01].[0-9]+'
-  pull_request:
-    branches:
-      - trunk
-      - '6.[2-9]'
-      - '[7-9].[0-9]'
   workflow_dispatch:
-
-# Cancels all previous workflow runs for pull requests that have not completed.
-concurrency:
-  # The concurrency group contains the workflow name and the branch name for pull requests
-  # or the commit hash for any other events.
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
-  cancel-in-progress: true
 
 # Disable permissions for all available scopes by default.
 # Any needed permissions should be configured at the job level.
@@ -78,7 +56,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    if: ${{ github.repository == 'WordPress/wordpress-develop' || github.event_name == 'pull_request' }}
 
     steps:
       - name: Configure environment variables
@@ -165,85 +142,13 @@ jobs:
       - name: Print base line performance tests results
         run: "node ./tests/performance/results.js --prefix=base"
 
-      - name: Set the base sha
-        # Only needed when publishing results.
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/trunk' }}
-        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
-        id: base-sha
+      - name: Archive debug artifacts (screenshots, HTML snapshots)
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+        if: always()
         with:
-            github-token: ${{ secrets.GITHUB_TOKEN }}
-            script: |
-                const baseRef = await github.rest.git.getRef({ owner: context.repo.owner, repo: context.repo.repo, ref: 'tags/${{ env.BASE_TAG }}' });
-                return baseRef.data.object.sha;
-
-      - name: Set commit details
-        # Only needed when publishing results.
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/trunk' }}
-        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
-        id: commit-timestamp
-        with:
-            github-token: ${{ secrets.GITHUB_TOKEN }}
-            script: |
-                const commit_details = await github.rest.git.getCommit({ owner: context.repo.owner, repo: context.repo.repo, commit_sha: context.sha });
-                return parseInt((new Date( commit_details.data.author.date ).getTime() / 1000).toFixed(0))
-
-      - name: Publish performance results
-        # Only publish results on pushes to trunk.
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/trunk' }}
-        env:
-            BASE_SHA: ${{ steps.base-sha.outputs.result }}
-            COMMITTED_AT: ${{ steps.commit-timestamp.outputs.result }}
-            CODEVITALS_PROJECT_TOKEN: ${{ secrets.CODEVITALS_PROJECT_TOKEN }}
-            HOST_NAME: "www.codevitals.run"
-        run: node ./tests/performance/log-results.js $CODEVITALS_PROJECT_TOKEN trunk $GITHUB_SHA $BASE_SHA $COMMITTED_AT $HOST_NAME
+            name: failures-artifacts
+            path: artifacts
+            if-no-files-found: ignore
 
       - name: Ensure version-controlled files are not modified or deleted
         run: git diff --exit-code
-
-  slack-notifications:
-    name: Slack Notifications
-    uses: WordPress/wordpress-develop/.github/workflows/slack-notifications.yml@trunk
-    permissions:
-      actions: read
-      contents: read
-    needs: [ performance ]
-    if: ${{ github.repository == 'WordPress/wordpress-develop' && github.event_name != 'pull_request' && always() }}
-    with:
-      calling_status: ${{ needs.performance.result == 'success' && 'success' || needs.performance.result == 'cancelled' && 'cancelled' || 'failure' }}
-    secrets:
-      SLACK_GHA_SUCCESS_WEBHOOK: ${{ secrets.SLACK_GHA_SUCCESS_WEBHOOK }}
-      SLACK_GHA_CANCELLED_WEBHOOK: ${{ secrets.SLACK_GHA_CANCELLED_WEBHOOK }}
-      SLACK_GHA_FIXED_WEBHOOK: ${{ secrets.SLACK_GHA_FIXED_WEBHOOK }}
-      SLACK_GHA_FAILURE_WEBHOOK: ${{ secrets.SLACK_GHA_FAILURE_WEBHOOK }}
-
-  failed-workflow:
-    name: Failed workflow tasks
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-    needs: [ performance, slack-notifications ]
-    if: |
-      always() &&
-      github.repository == 'WordPress/wordpress-develop' &&
-      github.event_name != 'pull_request' &&
-      github.run_attempt < 2 &&
-      (
-        needs.performance.result == 'cancelled' || needs.performance.result == 'failure'
-      )
-
-    steps:
-      - name: Dispatch workflow run
-        uses: actions/github-script@d7906e4ad0b1822421a7e6a35d5ca353c962f410 # v6.4.1
-        with:
-          retries: 2
-          retry-exempt-status-codes: 418
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'failed-workflow.yml',
-              ref: 'trunk',
-              inputs: {
-                run_id: '${{ github.run_id }}'
-              }
-            });

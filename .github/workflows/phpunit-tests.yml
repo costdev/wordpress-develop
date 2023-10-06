@@ -104,6 +104,13 @@ jobs:
         memcached: [ false ]
 
         include:
+        - os: windows-latest
+          php: '7.4'
+          db-type: 'mysql'
+          db-version: 'latest'
+          multisite: false
+          memcached: false
+
         # Include jobs for PHP 7.4 with memcached.
         - os: ubuntu-latest
           php: '7.4'

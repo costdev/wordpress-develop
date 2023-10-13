@@ -690,33 +690,29 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that a non-existent option is added even when its pre filter returns a value.
+	 * Tests that a non-existent option is not added even when its pre filter returns a value.
 	 *
 	 * @ticket 59360
 	 *
 	 * @covers ::update_network_option
 	 */
-	public function test_update_network_option_with_pre_filter_adds_missing_option() {
+	public function test_update_network_option_with_pre_filter_should_not_add_missing_option() {
 		$hook_name = is_multisite() ? 'pre_site_option_foo' : 'pre_option_foo';
 
 		// Force a return value of integer 0.
 		add_filter( $hook_name, '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option does not exist in the database.
-		 * The default value is false, so it differs from 0.
-		 */
-		$this->assertTrue( update_network_option( null, 'foo', 0 ) );
+		$this->assertFalse( update_network_option( null, 'foo', 0 ) );
 	}
 
 	/**
-	 * Tests that an existing option is updated even when its pre filter returns the same value.
+	 * Tests that an existing option is not updated even when its pre filter returns the same value.
 	 *
 	 * @ticket 59360
 	 *
 	 * @covers ::update_network_option
 	 */
-	public function test_update_network_option_with_pre_filter_updates_option_with_different_value() {
+	public function test_update_network_option_with_pre_filter_should_not_update_option_with_different_value() {
 		$hook_name = is_multisite() ? 'pre_site_option_foo' : 'pre_option_foo';
 
 		// Add the option with a value of 1 to the database.
@@ -725,11 +721,7 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 		// Force a return value of integer 0.
 		add_filter( $hook_name, '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option has a value of 1 in the database.
-		 * Therefore it differs from 0 and should be updated.
-		 */
-		$this->assertTrue( update_network_option( null, 'foo', 0 ) );
+		$this->assertFalse( update_network_option( null, 'foo', 0 ) );
 	}
 
 	/**

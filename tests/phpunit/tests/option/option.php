@@ -725,42 +725,34 @@ class Tests_Option_Option extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that a non-existent option is added even when its pre filter returns a value.
+	 * Tests that a non-existent option is not added when its pre filter returns the same value.
 	 *
 	 * @ticket 22192
 	 *
 	 * @covers ::update_option
 	 */
-	public function test_update_option_with_pre_filter_adds_missing_option() {
+	public function test_update_option_with_pre_filter_should_not_add_missing_option() {
 		// Force a return value of integer 0.
 		add_filter( 'pre_option_foo', '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option does not exist in the database.
-		 * The default value is false, so it differs from 0.
-		 */
-		$this->assertTrue( update_option( 'foo', 0 ) );
+		$this->assertFalse( update_option( 'foo', 0 ) );
 	}
 
 	/**
-	 * Tests that an existing option is updated even when its pre filter returns the same value.
+	 * Tests that an existing option is not updated even when its pre filter returns the same value.
 	 *
 	 * @ticket 22192
 	 *
 	 * @covers ::update_option
 	 */
-	public function test_update_option_with_pre_filter_updates_option_with_different_value() {
+	public function test_update_option_with_pre_filter_should_not_update_option_with_different_value() {
 		// Add the option with a value of 1 to the database.
 		add_option( 'foo', 1 );
 
 		// Force a return value of integer 0.
 		add_filter( 'pre_option_foo', '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option has a value of 1 in the database.
-		 * Therefore it differs from 0 and should be updated.
-		 */
-		$this->assertTrue( update_option( 'foo', 0 ) );
+		$this->assertFalse( update_option( 'foo', 0 ) );
 	}
 
 	/**

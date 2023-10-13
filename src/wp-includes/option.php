@@ -776,26 +776,18 @@ function update_option( $option, $value, $autoload = null ) {
 	 */
 	$value = apply_filters( 'pre_update_option', $value, $option, $old_value );
 
+	/** This filter is documented in wp-includes/option.php */
+	$default_value = apply_filters( "default_option_{$option}", false, $option, false );
+
 	/*
-	 * To get the actual raw old value from the database, any existing pre filters need to be temporarily disabled.
-	 * Immediately after getting the raw value, they are reinstated.
 	 * The raw value is only used to determine whether a value is present in the database. It is not used anywhere
 	 * else, and is not passed to any of the hooks either.
 	 */
-	if ( has_filter( "pre_option_{$option}" ) ) {
-		global $wp_filter;
-
-		$old_filters = $wp_filter[ "pre_option_{$option}" ];
-		unset( $wp_filter[ "pre_option_{$option}" ] );
-
-		$raw_old_value                       = get_option( $option );
-		$wp_filter[ "pre_option_{$option}" ] = $old_filters;
-	} else {
-		$raw_old_value = $old_value;
+	$raw_old_value = $old_value;
+	// Reviewers: I tried various conditions here. These are the only ones I could get working.
+	if ( false === $old_value && false !== $default_value ) {
+		$raw_old_value = _get_raw_option_value( $option, $default_value );
 	}
-
-	/** This filter is documented in wp-includes/option.php */
-	$default_value = apply_filters( "default_option_{$option}", false, $option, false );
 
 	/*
 	 * If the new and old values are the same, no need to update.
@@ -2144,45 +2136,14 @@ function update_network_option( $network_id, $option, $value ) {
 	 */
 	$value = apply_filters( "pre_update_site_option_{$option}", $value, $old_value, $option, $network_id );
 
-	/*
-	 * To get the actual raw old value from the database, any existing pre filters need to be temporarily disabled.
-	 * Immediately after getting the raw value, they are reinstated.
-	 * The raw value is only used to determine whether a value is present in the database. It is not used anywhere
-	 * else, and is not passed to any of the hooks either.
-	 */
-	global $wp_filter;
-
 	/** This filter is documented in wp-includes/option.php */
 	$default_value = apply_filters( "default_site_option_{$option}", false, $option, $network_id );
 
-	$has_site_filter   = has_filter( "pre_site_option_{$option}" );
-	$has_option_filter = has_filter( "pre_option_{$option}" );
-	if ( $has_site_filter || $has_option_filter ) {
-		if ( $has_site_filter ) {
-			$old_ms_filters = $wp_filter[ "pre_site_option_{$option}" ];
-			unset( $wp_filter[ "pre_site_option_{$option}" ] );
-		}
-
-		if ( $has_option_filter ) {
-			$old_single_site_filters = $wp_filter[ "pre_option_{$option}" ];
-			unset( $wp_filter[ "pre_option_{$option}" ] );
-		}
-
-		if ( is_multisite() ) {
-			$raw_old_value = get_network_option( $network_id, $option );
-		} else {
-			$raw_old_value = get_option( $option, $default_value );
-		}
-
-		if ( $has_site_filter ) {
-			$wp_filter[ "pre_site_option_{$option}" ] = $old_ms_filters;
-		}
-		if ( $has_option_filter ) {
-			$wp_filter[ "pre_option_{$option}" ] = $old_single_site_filters;
-		}
-	} else {
-		$raw_old_value = $old_value;
-	}
+	/*
+	 * The raw value is only used to determine whether a value is present in the database. It is not used anywhere
+	 * else, and is not passed to any of the hooks either.
+	 */
+	$raw_old_value = false === $old_value && false !== $default_value ? _get_raw_option_value( $option, $default_value, $network_id ) : $old_value;
 
 	if ( ! is_multisite() ) {
 		/** This filter is documented in wp-includes/option.php */
@@ -3031,4 +2992,70 @@ function _is_equal_database_value( $old_value, $new_value ) {
 	 * See https://core.trac.wordpress.org/ticket/38903
 	 */
 	return maybe_serialize( $old_value ) === maybe_serialize( $new_value );
+}
+
+/**
+ * Attempts getting the raw value of an option from the database.
+ *
+ * For filtered options and options that do not exist in the database,
+ * the raw value is the default value.
+ *
+ * @since 6.4.0
+ * @access private
+ *
+ * @param string   $option        The option's name.
+ * @param mixed    $default_value The option's default value.
+ * @param int|null $network_id    Optional. ID of the network.
+ *                                Can be null to default to the current network ID.
+ *                                Default null.
+ * @return mixed The raw value.
+ */
+function _get_raw_option_value( $option, $default_value, $network_id = null ) {
+	global $wpdb;
+
+	// Do not check filtered option values.
+	if ( ! ( false === has_filter( "pre_option_{$option}" ) || false === has_filter( 'pre_option' ) ) ) {
+		return $default_value;
+	}
+
+	/*
+	 * Local options take precedence, even on Multisite.
+	 * For reviewers, see Tests_L10n_GetLocale::test_local_option_should_take_precedence_on_multisite
+	 */
+	$from_db = $wpdb->get_row(
+		$wpdb->prepare( "SELECT option_value FROM $wpdb->options WHERE option_name = %s LIMIT 1", $option )
+	);
+
+	if ( isset( $from_db->option_value ) ) {
+		return $from_db->option_value;
+	}
+
+	if ( is_multisite() ) {
+		// Do not check filtered option values.
+		if ( false !== has_filter( "pre_site_option_{$option}" ) ) {
+			return $default_value;
+		}
+
+		$network_id = (int) $network_id;
+
+		// Fallback to the current network if a network ID is not specified.
+		if ( ! $network_id ) {
+			$network_id = get_current_network_id();
+		}
+
+		$from_db = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT meta_value FROM $wpdb->sitemeta WHERE meta_key = %s AND site_id = %i LIMIT 1",
+				$option,
+				$network_id
+			)
+		);
+
+		if ( isset( $from_db->meta_value ) ) {
+			return $from_db->meta_value;
+		}
+	}
+
+	// There is no value in the database. Return the default value.
+	return $default_value;
 }

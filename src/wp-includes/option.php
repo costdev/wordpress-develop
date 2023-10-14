@@ -800,6 +800,9 @@ function update_option( $option, $value, $autoload = null ) {
 	if (
 		$value === $raw_old_value ||
 		(
+			// Do not check filtered option values.
+			false === has_filter( "pre_option_{$option}" ) &&
+			false === has_filter( 'pre_option' ) &&
 			$raw_old_value !== $default_value &&
 			_is_equal_database_value( $raw_old_value, $value )
 		)

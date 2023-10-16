@@ -690,33 +690,29 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that a non-existent option is added even when its pre filter returns a value.
+	 * Tests that a non-existent option is not added even when its pre filter returns a value.
 	 *
 	 * @ticket 59360
 	 *
 	 * @covers ::update_network_option
 	 */
-	public function test_update_network_option_with_pre_filter_adds_missing_option() {
+	public function test_update_network_option_with_pre_filter_should_not_add_missing_option() {
 		$hook_name = is_multisite() ? 'pre_site_option_foo' : 'pre_option_foo';
 
 		// Force a return value of integer 0.
 		add_filter( $hook_name, '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option does not exist in the database.
-		 * The default value is false, so it differs from 0.
-		 */
-		$this->assertTrue( update_network_option( null, 'foo', 0 ) );
+		$this->assertFalse( update_network_option( null, 'foo', 0 ) );
 	}
 
 	/**
-	 * Tests that an existing option is updated even when its pre filter returns the same value.
+	 * Tests that an existing option is not updated even when its pre filter returns the same value.
 	 *
 	 * @ticket 59360
 	 *
 	 * @covers ::update_network_option
 	 */
-	public function test_update_network_option_with_pre_filter_updates_option_with_different_value() {
+	public function test_update_network_option_with_pre_filter_should_not_update_option_with_different_value() {
 		$hook_name = is_multisite() ? 'pre_site_option_foo' : 'pre_option_foo';
 
 		// Add the option with a value of 1 to the database.
@@ -725,11 +721,7 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 		// Force a return value of integer 0.
 		add_filter( $hook_name, '__return_zero' );
 
-		/*
-		 * This should succeed, since the 'foo' option has a value of 1 in the database.
-		 * Therefore it differs from 0 and should be updated.
-		 */
-		$this->assertTrue( update_network_option( null, 'foo', 0 ) );
+		$this->assertFalse( update_network_option( null, 'foo', 0 ) );
 	}
 
 	/**
@@ -803,9 +795,12 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 	public function test_update_network_option_should_add_option_with_filtered_default_value() {
 		global $wpdb;
 
-		$option               = 'foo';
-		$default_site_value   = 'default-site-value';
-		$default_option_value = 'default-option-value';
+		if ( ! is_multisite() ) {
+			$this->markTestSkipped();
+		}
+
+		$option             = 'foo';
+		$default_site_value = 'default-site-value';
 
 		add_filter(
 			"default_site_option_{$option}",
@@ -814,40 +809,15 @@ class Tests_Option_NetworkOption extends WP_UnitTestCase {
 			}
 		);
 
-		add_filter(
-			"default_option_{$option}",
-			static function () use ( $default_option_value ) {
-				return $default_option_value;
-			}
+		$this->assertFalse( update_network_option( null, $option, false ), 'update_network_option() should have returned false.' );
+
+		$actual = $wpdb->get_row(
+			$wpdb->prepare(
+				"SELECT meta_value FROM $wpdb->sitemeta WHERE meta_key = %s LIMIT 1",
+				$option
+			)
 		);
 
-		/*
-		 * For a non existing option with the unfiltered default of false, passing false here wouldn't work.
-		 * Because the default is different than false here though, passing false is expected to result in
-		 * a database update.
-		 */
-		$this->assertTrue( update_network_option( null, $option, false ), 'update_network_option() should have returned true.' );
-
-		if ( is_multisite() ) {
-			$actual = $wpdb->get_row(
-				$wpdb->prepare(
-					"SELECT meta_value FROM $wpdb->sitemeta WHERE meta_key = %s LIMIT 1",
-					$option
-				)
-			);
-		} else {
-			$actual = $wpdb->get_row(
-				$wpdb->prepare(
-					"SELECT option_value FROM $wpdb->options WHERE option_name = %s LIMIT 1",
-					$option
-				)
-			);
-		}
-
-		$value_field = is_multisite() ? 'meta_value' : 'option_value';
-
-		$this->assertIsObject( $actual, 'The option was not added to the database.' );
-		$this->assertObjectHasProperty( $value_field, $actual, "The '$value_field' property was not included." );
-		$this->assertSame( '', $actual->$value_field, 'The new value was not stored in the database.' );
+		$this->assertNull( $actual, 'The option was added to the database.' );
 	}
 }

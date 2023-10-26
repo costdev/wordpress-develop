@@ -5610,3 +5610,40 @@ function wp_ajax_send_password_reset() {
 		wp_send_json_error( $results->get_error_message() );
 	}
 }
+
+/**
+ * Handles dismissing a notice via AJAX.
+ *
+ * @since 6.5.0
+ */
+function wp_ajax_dismiss_notice() {
+	check_ajax_referer( 'dismiss-notice', 'nonce' );
+
+	if ( ! isset( $_POST['slug'] ) ) {
+		wp_send_json_error( __( 'Failed to dismiss notice: The notice does not have a slug.' ) );
+	}
+
+	$slug = trim( sanitize_text_field( $_POST['slug'] ) );
+	if ( '' === $slug ) {
+		wp_send_json_error( __( "Failed to dismiss notice: The notice's slug must not be an empty string." ) );
+	}
+
+	$expiration = 0;
+	if ( isset( $_POST['expiration'] ) ) {
+		if ( ! is_numeric( $_POST['expiration'] ) ) {
+			wp_send_json_error( __( 'Failed to dismiss notice: The expiration time must be a number of seconds.' ) );
+		}
+
+		$expiration = (int) $_POST['expiration'];
+
+		if ( 0 > $_POST['expiration'] ) {
+			wp_send_json_error( __( 'Failed to dismiss notice: The expiration time must be greater than or equal to 0.' ) );
+		}
+	}
+
+	if ( false === set_site_transient( "wp_admin_notice_dismissed_{$slug}", 1, $expiration ) ) {
+		wp_send_json_error( __( 'Failed to dismiss notice: The notice could not be dismissed.' ) );
+	}
+
+	wp_send_json_success( __( 'The notice was successfully dismissed.' ) );
+}

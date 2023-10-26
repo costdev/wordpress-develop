@@ -14,6 +14,7 @@ require_once __DIR__ . '/trac.php';
  */
 abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 
+	protected static $original_error_reporting;
 	protected static $forced_tickets   = array();
 	protected $expected_deprecated     = array();
 	protected $caught_deprecated       = array();
@@ -63,6 +64,8 @@ abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 		global $wpdb;
 
 		parent::set_up_before_class();
+
+		self::$original_error_reporting = error_reporting();
 
 		$wpdb->suppress_errors = false;
 		$wpdb->show_errors     = true;
@@ -135,6 +138,9 @@ abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 
 		$this->start_transaction();
 		$this->expectDeprecated();
+		$this->setUpDeprecationNoticeExpectations();
+		$this->setUpWarningExpectations();
+		$this->setUpNoticeExpectations();
 		add_filter( 'wp_die_handler', array( $this, 'get_wp_die_handler' ) );
 	}
 
@@ -143,6 +149,10 @@ abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 	 */
 	public function tear_down() {
 		global $wpdb, $wp_the_query, $wp_query, $wp;
+
+		// Reset error reporting.
+		error_reporting( self::$original_error_reporting );
+
 		$wpdb->query( 'ROLLBACK' );
 		if ( is_multisite() ) {
 			while ( ms_is_switched() ) {
@@ -636,6 +646,96 @@ abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 			! empty( $this->caught_deprecated ) ||
 			! empty( $this->caught_doing_it_wrong ) ) {
 			$this->assertEmpty( $errors, implode( "\n", $errors ) );
+		}
+	}
+
+	/**
+	 * Sets up the expectations for testing a deprecation notice.
+	 *
+	 * @since 6.5.0
+	 */
+	public function setUpDeprecationNoticeExpectations() {
+		if ( method_exists( $this, 'getAnnotations' ) ) {
+			// PHPUnit < 9.5.0.
+			$annotations = $this->getAnnotations();
+		} else {
+			// PHPUnit >= 9.5.0.
+			$annotations = \PHPUnit\Util\Test::parseTestMethodAnnotations(
+				static::class,
+				$this->getName( false )
+			);
+		}
+
+		foreach ( array( 'class', 'method' ) as $depth ) {
+			if ( isset( $annotations[ $depth ]['expectsDeprecationNotice'] ) ) {
+				error_reporting( E_ALL & ~E_USER_DEPRECATED );
+
+				/*
+				 * Perform an assertion that is guaranteed to pass
+				 * in case there no other assertions in the test method.
+				 */
+				$this->assertTrue( true );
+			}
+		}
+	}
+
+	/**
+	 * Sets up the expectations for testing a warning.
+	 *
+	 * @since 6.5.0
+	 */
+	public function setUpWarningExpectations() {
+		if ( method_exists( $this, 'getAnnotations' ) ) {
+			// PHPUnit < 9.5.0.
+			$annotations = $this->getAnnotations();
+		} else {
+			// PHPUnit >= 9.5.0.
+			$annotations = \PHPUnit\Util\Test::parseTestMethodAnnotations(
+				static::class,
+				$this->getName( false )
+			);
+		}
+
+		foreach ( array( 'class', 'method' ) as $depth ) {
+			if ( isset( $annotations[ $depth ]['expectsWarning'] ) ) {
+				error_reporting( E_ALL & ~E_USER_WARNING );
+
+				/*
+				 * Perform an assertion that is guaranteed to pass
+				 * in case there no other assertions in the test method.
+				 */
+				$this->assertTrue( true );
+			}
+		}
+	}
+
+	/**
+	 * Sets up the expectations for testing a notice.
+	 *
+	 * @since 6.5.0
+	 */
+	public function setUpNoticeExpectations() {
+		if ( method_exists( $this, 'getAnnotations' ) ) {
+			// PHPUnit < 9.5.0.
+			$annotations = $this->getAnnotations();
+		} else {
+			// PHPUnit >= 9.5.0.
+			$annotations = \PHPUnit\Util\Test::parseTestMethodAnnotations(
+				static::class,
+				$this->getName( false )
+			);
+		}
+
+		foreach ( array( 'class', 'method' ) as $depth ) {
+			if ( isset( $annotations[ $depth ]['expectsNotice'] ) ) {
+				error_reporting( E_ALL & ~E_USER_NOTICE );
+
+				/*
+				 * Perform an assertion that is guaranteed to pass
+				 * in case there no other assertions in the test method.
+				 */
+				$this->assertTrue( true );
+			}
 		}
 	}
 
@@ -1139,6 +1239,99 @@ abstract class WP_UnitTestCase_Base extends PHPUnit_Adapter_TestCase {
 		if ( ! $passed ) {
 			$this->fail( $message );
 		}
+	}
+
+	/**
+	 * Checks whether an E_USER_DEPRECATED was triggered.
+	 *
+	 * @since 6.5.0
+	 *
+	 * @param string $message  The expected deprecation message, or a regex pattern to match.
+	 * @param bool   $as_regex Optional. Whether to match the message as a regex pattern.
+	 *                         Default false.
+	 */
+	public function assertDeprecationNotice( $message, $as_regex = false ) {
+		$last_error     = error_get_last();
+		$is_deprecation = null !== $last_error && E_USER_DEPRECATED === $last_error['type'];
+
+		if ( ! $is_deprecation ) {
+			$this->fail( 'Failed asserting that a deprecation notice was triggered.' );
+		}
+
+		if ( $message ) {
+			$failure_message = 'The deprecation notice message did not match the expected deprecation notice message.';
+
+			if ( $as_regex ) {
+				$this->assertMatchesRegularExpression( $message, $last_error['message'], $failure_message );
+			} else {
+				$this->assertSame( $message, $last_error['message'], $failure_message );
+			}
+		}
+
+		// Clear the error to prevent the tear_down() method from detecting it.
+		error_clear_last();
+	}
+
+	/**
+	 * Checks whether an E_USER_WARNING was triggered.
+	 *
+	 * @since 6.5.0
+	 *
+	 * @param string $message  The expected warning message, or a regex pattern to match.
+	 * @param bool   $as_regex Optional. Whether to match the message as a regex pattern.
+	 *                         Default false.
+	 */
+	public function assertWarning( $message, $as_regex = false ) {
+		$last_error = error_get_last();
+		$is_warning = null !== $last_error && E_USER_WARNING === $last_error['type'];
+
+		if ( ! $is_warning ) {
+			$this->fail( 'Failed asserting that a warning was triggered.' );
+		}
+
+		if ( $message ) {
+			$failure_message = 'The warning message did not match the expected warning message.';
+
+			if ( $as_regex ) {
+				$this->assertMatchesRegularExpression( $message, $last_error['message'], $failure_message );
+			} else {
+				$this->assertSame( $message, $last_error['message'], $failure_message );
+			}
+		}
+
+		// Clear the error to prevent the tear_down() method from detecting it.
+		error_clear_last();
+	}
+
+	/**
+	 * Checks whether an E_USER_NOTICE was triggered.
+	 *
+	 * @since 6.5.0
+	 *
+	 * @param string $message  The expected notice message, or a regex pattern to match.
+	 * @param bool   $as_regex Optional. Whether to match the message as a regex pattern.
+	 *                         Default false.
+	 */
+	public function assertNotice( $message, $as_regex = false ) {
+		$last_error = error_get_last();
+		$is_notice  = null !== $last_error && E_USER_NOTICE === $last_error['type'];
+
+		if ( ! $is_notice ) {
+			$this->fail( 'Failed asserting that a notice was triggered.' );
+		}
+
+		if ( $message ) {
+			$failure_message = 'The notice message did not match the expected notice message.';
+
+			if ( $as_regex ) {
+				$this->assertMatchesRegularExpression( $message, $last_error['message'], $failure_message );
+			} else {
+				$this->assertSame( $message, $last_error['message'], $failure_message );
+			}
+		}
+
+		// Clear the error to prevent the tear_down() method from detecting it.
+		error_clear_last();
 	}
 
 	/**

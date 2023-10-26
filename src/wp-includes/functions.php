@@ -8756,14 +8756,24 @@ function wp_fuzzy_number_match( $expected, $actual, $precision = 1 ) {
  * @param array  $args {
  *     Optional. An array of arguments for the admin notice. Default empty array.
  *
- *     @type string   $type               Optional. The type of admin notice.
- *                                        For example, 'error', 'success', 'warning', 'info'.
- *                                        Default empty string.
- *     @type bool     $dismissible        Optional. Whether the admin notice is dismissible. Default false.
- *     @type string   $id                 Optional. The value of the admin notice's ID attribute. Default empty string.
- *     @type string[] $additional_classes Optional. A string array of class names. Default empty array.
- *     @type string[] $attributes         Optional. Additional attributes for the notice div. Default empty array.
- *     @type bool     $paragraph_wrap     Optional. Whether to wrap the message in paragraph tags. Default true.
+ *     @type string     $type               Optional. The type of admin notice.
+ *                                          For example, 'error', 'success', 'warning', 'info'.
+ *                                          Default empty string.
+ *     @type bool|array $dismissible        {
+ *         Optional. Whether the admin notice is dismissible. Default false.
+ *
+ *         If false, the notice is not dismissible.
+ *         If true, the notice is dismissible until the next page load.
+ *         If an array, the notice will be dismissed either permanently,
+ *         or until the specified expiration has occurred.
+ *
+ *         @type string $slug       The slug of the notice. Used to store a transient when the notice is dismissed.
+ *         @type int    $expiration Optional. Time until expiration in seconds. Default 0 (no expiration).
+ *     }
+ *     @type string     $id                 Optional. The value of the admin notice's ID attribute. Default empty string.
+ *     @type string[]   $additional_classes Optional. A string array of class names. Default empty array.
+ *     @type string[]   $attributes         Optional. Additional attributes for the notice div. Default empty array.
+ *     @type bool       $paragraph_wrap     Optional. Whether to wrap the message in paragraph tags. Default true.
  * }
  * @return string The markup for an admin notice.
  */
@@ -8822,6 +8832,106 @@ function wp_get_admin_notice( $message, $args = array() ) {
 
 	if ( true === $args['dismissible'] ) {
 		$classes .= ' is-dismissible';
+	} elseif ( is_array( $args['dismissible'] ) ) {
+		// The "slug" key is required.
+		if ( ! isset( $args['dismissible']['slug'] ) || ! is_string( $args['dismissible']['slug'] ) ) {
+			wp_trigger_error(
+				__FUNCTION__,
+				sprintf(
+					/* translators: 1: The "slug" key, 2: The "dismissible" key. */
+					__( 'The "%1$s" key in the "%2$s" array must be a string.' ),
+					'slug',
+					'dismissible'
+				)
+			);
+		} else {
+			$slug = trim( $args['dismissible']['slug'] );
+			if ( '' === $slug ) {
+				wp_trigger_error(
+					__FUNCTION__,
+					sprintf(
+						/* translators: 1: The "slug" key, 2: The "dismissible" key. */
+						__( 'The "%1$s" key in the "%2$s" array must be a non-empty string.' ),
+						'slug',
+						'dismissible'
+					)
+				);
+			} else {
+				// Add a slug data attribute so a transient can be saved when the notice is dismissed.
+				$args['attributes']['data-slug'] = $slug;
+			}
+
+			/*
+			 * If the notice is still dismissed, return early with
+			 * empty notice markup so that nothing can be output.
+			 */
+			if ( 1 === (int) get_site_transient( "wp_admin_notice_dismissed_{$slug}" ) ) {
+				return '';
+			}
+
+			/*
+			 * The "expiration" key is optional.
+			 *
+			 * `isset()` is not used because it will not catch `null` values, which are invalid.
+			 */
+			if ( array_key_exists( 'expiration', $args['dismissible'] ) ) {
+				if ( ! is_int( $args['dismissible']['expiration'] ) ) {
+					/*
+					 * Unset the slug data attribute so that the notice appears on the next page load,
+					 * allowing for corrections to be made without needing to delete the notice's transient.
+					 *
+					 * Without this, the notice would be permanently dismissed.
+					 */
+					unset( $args['attributes']['data-slug'] );
+
+					wp_trigger_error(
+						__FUNCTION__,
+						sprintf(
+							/* translators: 1: The "expiration" key, 2: The "dismissible" key. */
+							__( 'The "%1$s" key in the "%2$s" array must be an integer.' ),
+							'expiration',
+							'dismissible'
+						)
+					);
+				} else {
+					$expiration = (int) $args['dismissible']['expiration'];
+					if ( 0 > $expiration ) {
+						/*
+						 * Unset the slug data attribute so that the notice appears on the next page load,
+						 * allowing for corrections to be made without needing to delete the notice's transient.
+						 *
+						 * Without this, the notice would be permanently dismissed.
+						 */
+						unset( $args['attributes']['data-slug'] );
+
+						wp_trigger_error(
+							__FUNCTION__,
+							sprintf(
+								/* translators: 1: The "expiration" key, 2: The "dismissible" key. */
+								__( 'The "%1$s" key in the "%2$s" array must be greater than or equal to 0.' ),
+								'expiration',
+								'dismissible'
+							)
+						);
+					} else {
+						// Add an expiration data attribute so the notice can be dismissed for a specified duration.
+						$args['attributes']['data-expiration'] = $expiration;
+					}
+				}
+			}
+
+			/*
+			 * By only adding the HTML class when everything is considered valid,
+			 * this means invalid values will result in a notice that cannot be dismissed.
+			 *
+			 * Even if error reporting is disabled for some reason, the developer will know
+			 * immediately that something has gone wrong.
+			 */
+			if ( isset( $args['attributes']['data-slug'] ) ) {
+				$args['attributues']['data-nonce'] = wp_create_nonce( 'dismiss-notice' );
+				$classes                          .= ' is-dismissible';
+			}
+		}
 	}
 
 	if ( is_array( $args['additional_classes'] ) && ! empty( $args['additional_classes'] ) ) {

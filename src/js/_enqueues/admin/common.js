@@ -1109,11 +1109,46 @@ $( function() {
 			$button.find( '.screen-reader-text' ).text( __( 'Dismiss this notice.' ) );
 			$button.on( 'click.wp-dismiss-notice', function( event ) {
 				event.preventDefault();
-				$el.fadeTo( 100, 0, function() {
-					$el.slideUp( 100, function() {
-						$el.remove();
+
+				var $dismiss_data = { action: 'dismiss-notice' },
+				    $slug = $el.data( 'slug' ),
+				    $expiration = $el.data( 'expiration' );
+
+				if ( ! $slug ) {
+					$el.fadeTo( 100, 0, function() {
+						$el.slideUp( 100, function() {
+							$el.remove();
+						});
 					});
-				});
+				} else {
+					$dismiss_data.slug = $slug;
+
+					if ( $expiration ) {
+						$dismiss_data.expiration = $expiration;
+					}
+
+					$.post(
+						ajaxurl,
+						$dismiss_data
+					).always( function ( response ) {
+						if ( true === response.success ) {
+							$el.fadeTo( 100, 0, function() {
+								$el.slideUp( 100, function() {
+									$el.remove();
+								});
+							});
+						} else {
+							var $noticeDismissalFailed = $( '#notice-dismissal-failed' );
+
+							if ( 0 === $noticeDismissalFailed.length ) {
+								$el.after( '<div id="notice-dismissal-failed" class="notice notice-error"><p>' + response.data + '</p></div>' );
+							} else {
+								$el.after( $noticeDismissalFailed );
+								$noticeDismissalFailed.find( 'p' ).innerHTML = response.data;
+							}
+						}
+					} );
+				}
 			});
 
 			$el.append( $button );
@@ -1733,7 +1768,7 @@ $( function() {
 						setTimeout( function() {
 							var focusIsInToggle  = $.contains( toggleButton, focusedElement );
 							var focusIsInSidebar = $.contains( sidebar, focusedElement );
-							
+
 							if ( ! focusIsInToggle && ! focusIsInSidebar ) {
 								$( toggleButton ).trigger( 'click.wp-responsive' );
 							}

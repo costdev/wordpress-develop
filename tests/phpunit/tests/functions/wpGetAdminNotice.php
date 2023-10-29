@@ -273,6 +273,25 @@ class Tests_Functions_WpGetAdminNotice extends WP_UnitTestCase {
 				),
 				'expected' => '<div class="notice"><p>A notice with paragraph wrapping as a falsy value rather than (bool) false.</p></div>',
 			),
+			'a notice that should be dismissed permanently' => array(
+				'message'  => 'A notice that should be dismissed permanently.',
+				'args'     => array(
+					'dismissible' => array(
+						'slug' => 'mynotice-dismiss-permanently',
+					),
+				),
+				'expected' => '<div class="notice is-dismissible" data-slug="mynotice-dismiss-permanently"><p>A notice that should be dismissed permanently.</p></div>',
+			),
+			'a notice that should be dismissed for 30 days' => array(
+				'message'  => 'A notice that should be dismissed for 30 days.',
+				'args'     => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-dismiss-for-30-days',
+						'expiration' => 30 * DAY_IN_SECONDS,
+					),
+				),
+				'expected' => '<div class="notice is-dismissible" data-slug="mynotice-dismiss-for-30-days" data-expiration="2592000"><p>A notice that should be dismissed for 30 days.</p></div>',
+			),
 		);
 	}
 
@@ -321,6 +340,349 @@ class Tests_Functions_WpGetAdminNotice extends WP_UnitTestCase {
 		return array(
 			'wp_admin_notice_args'   => array( 'hook_name' => 'wp_admin_notice_args' ),
 			'wp_admin_notice_markup' => array( 'hook_name' => 'wp_admin_notice_markup' ),
+		);
+	}
+
+	/**
+	 * Tests that `wp_get_admin_notice()` returns an empty string for a notice that is still dismissed.
+	 *
+	 * @ticket
+	 *
+	 * @dataProvider data_notices_with_dismissible_array
+	 *
+	 * @param array $dismissible The value for the dismissible array.
+	 */
+	public function test_should_return_empty_string_for_a_notice_that_is_still_dismissed( $dismissible ) {
+		// The notice is still dismissed.
+		set_site_transient( 'wp_admin_notice_dismissed_' . $dismissible['slug'], 1 );
+
+		$this->assertSame(
+			'',
+			wp_get_admin_notice(
+				'A notice that is still dismissed.',
+				array(
+					'dismissible' => $dismissible,
+				)
+			)
+		);
+	}
+
+	/**
+	 * Tests that `wp_get_admin_notice()` does not apply markup filters for a notice that is still dismissed.
+	 *
+	 * @ticket
+	 *
+	 * @dataProvider data_notices_with_dismissible_array
+	 *
+	 * @param array $dismissible The value for the dismissible array.
+	 */
+	public function test_should_not_apply_markup_filters_for_a_notice_that_is_still_dismissed( $dismissible ) {
+		$filter = new MockAction();
+		add_filter( 'wp_admin_notice_markup', array( $filter, 'filter' ) );
+
+		// The notice is still dismissed.
+		set_site_transient( 'wp_admin_notice_dismissed_' . $dismissible['slug'], 1 );
+
+		wp_get_admin_notice(
+			'A notice that is still dismissed.',
+			array(
+				'dismissible' => $dismissible,
+			)
+		);
+
+		$this->assertSame( 0, $filter->get_call_count() );
+	}
+
+	/**
+	 * Data provider.
+	 *
+	 * @return array[]
+	 */
+	public function data_notices_with_dismissible_array() {
+		return array(
+			'a permanently dismissed notice (slug only, no expiration provided)' => array(
+				'dismissible' => array(
+					'slug' => 'mynotice-dismiss-forever',
+				),
+			),
+			'a notice dismissed for 30 days' => array(
+				'dismissible' => array(
+					'slug'       => 'mynotice-dismiss-for-30-days',
+					'expiration' => 30 * DAY_IN_SECONDS,
+				),
+			),
+		);
+	}
+
+	/**
+	 * Tests that `wp_get_admin_notice()` triggers an error.
+	 *
+	 * @ticket
+	 *
+	 * @dataProvider data_should_trigger_error_for_an_invalid_dismissible_slug
+	 * @dataProvider data_should_trigger_error_for_invalid_dismissible_expiration
+	 *
+	 * @param string $message         The message.
+	 * @param array  $args            Arguments for the admin notice.
+	 * @param string $expected_markup The expected admin notice markup.
+	 * @param string $expected_error  The expected error message.
+	 */
+	public function test_should_trigger_error( $message, $args, $expected_markup, $expected_error ) {
+		// Ensure no previous errors exist.
+		error_clear_last();
+
+		// Backup the error reporting value.
+		$original_error_reporting = error_reporting();
+
+		// Suppress E_USER_NOTICE.
+		error_reporting( E_ALL & ~E_USER_NOTICE );
+
+		$actual     = wp_get_admin_notice( $message, $args );
+		$last_error = error_get_last();
+
+		// Reset error reporting.
+		error_reporting( $original_error_reporting );
+
+		$this->assertSame( $expected_markup, $actual );
+		$this->assertIsArray( $last_error, 'An error was not triggered.' );
+		$this->assertSame( E_USER_NOTICE, $last_error['type'], 'The error was not a notice.' );
+		$this->assertSame( $last_error['message'], 'wp_get_admin_notice(): ' . $expected_error, 'The wrong error message was sent.' );
+	}
+
+	/**
+	 * Data provider.
+	 *
+	 * @return array[]
+	 */
+	public function data_should_trigger_error_for_an_invalid_dismissible_slug() {
+		return array(
+			'an empty "dismissible" array'                 => array(
+				'message'         => 'an empty "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(),
+				),
+				'expected_markup' => '<div class="notice"><p>an empty "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'no "slug" key in the "dismissible" array'     => array(
+				'message'         => 'no "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'expiration' => 30 * DAY_IN_SECONDS ),
+				),
+				'expected_markup' => '<div class="notice"><p>no "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'a NULL "slug" key in the "dismissible" array' => array(
+				'message'         => 'a NULL "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => null ),
+				),
+				'expected_markup' => '<div class="notice"><p>a NULL "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'a (bool) false "slug" key in the "dismissible" array' => array(
+				'message'         => 'a (bool) false "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => false ),
+				),
+				'expected_markup' => '<div class="notice"><p>a (bool) false "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'a (bool) true "slug" key in the "dismissible" array' => array(
+				'message'         => 'a (bool) true "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => true ),
+				),
+				'expected_markup' => '<div class="notice"><p>a (bool) true "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'an integer "slug" key in the "dismissible" array' => array(
+				'message'         => 'an integer "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => 1234 ),
+				),
+				'expected_markup' => '<div class="notice"><p>an integer "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'a float "slug" key in the "dismissible" array' => array(
+				'message'         => 'a float "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => 12.34 ),
+				),
+				'expected_markup' => '<div class="notice"><p>a float "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'an empty array "slug" key in the "dismissible" array' => array(
+				'message'         => 'an empty array "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => array() ),
+				),
+				'expected_markup' => '<div class="notice"><p>an empty array "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'a populated array "slug" key in the "dismissible" array' => array(
+				'message'         => 'a populated array "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => array( 'mynotice-dismiss-forever' ) ),
+				),
+				'expected_markup' => '<div class="notice"><p>a populated array "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'an object "slug" key in the "dismissible" array' => array(
+				'message'         => 'an object "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => new stdClass() ),
+				),
+				'expected_markup' => '<div class="notice"><p>an object "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a string.',
+			),
+			'an empty string "slug" key in the "dismissible" array' => array(
+				'message'         => 'an empty string "slug" key in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => '' ),
+				),
+				'expected_markup' => '<div class="notice"><p>an empty string "slug" key in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a non-empty string.',
+			),
+			'a "slug" key containing only space in the "dismissible" array' => array(
+				'message'         => 'a "slug" key containing only space in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array( 'slug' => " \r\t\n" ),
+				),
+				'expected_markup' => '<div class="notice"><p>a "slug" key containing only space in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "slug" key in the "dismissible" array must be a non-empty string.',
+			),
+		);
+	}
+
+	/**
+	 * Data provider.
+	 *
+	 * @return array[]
+	 */
+	public function data_should_trigger_error_for_invalid_dismissible_expiration() {
+		return array(
+			'a NULL "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a null "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-null-expiration',
+						'expiration' => null,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a null "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a (bool) false "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a (bool) false "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-false-expiration',
+						'expiration' => false,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a (bool) false "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a (bool) true "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a (bool) true "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-true-expiration',
+						'expiration' => true,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a (bool) true "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'an empty array "expiration" value in the "dismissible" array' => array(
+				'message'         => 'an empty array "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-empty-array-expiration',
+						'expiration' => array(),
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>an empty array "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a populated array "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a populated array "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-populated-array-expiration',
+						'expiration' => array( 30 * DAY_IN_SECONDS ),
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a populated array "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'an object "expiration" value in the "dismissible" array' => array(
+				'message'         => 'an object "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-object-expiration',
+						'expiration' => array( 30 * DAY_IN_SECONDS ),
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>an object "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a float "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a float "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-float-expiration',
+						'expiration' => 30.0,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a float "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a numeric string "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a numeric string "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-numeric-string-expiration',
+						'expiration' => '30',
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a numeric string "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a NAN "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a NAN "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-nan-expiration',
+						'expiration' => NAN,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a NAN "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'an INF "expiration" value in the "dismissible" array' => array(
+				'message'         => 'an INF "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-inf-expiration',
+						'expiration' => INF,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>an INF "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be an integer.',
+			),
+			'a negative "expiration" value in the "dismissible" array' => array(
+				'message'         => 'a negative "expiration" value in the "dismissible" array',
+				'args'            => array(
+					'dismissible' => array(
+						'slug'       => 'mynotice-negative-expiration',
+						'expiration' => -1,
+					),
+				),
+				'expected_markup' => '<div class="notice"><p>a negative "expiration" value in the "dismissible" array</p></div>',
+				'expected_error'  => 'The "expiration" key in the "dismissible" array must be greater than or equal to 0.',
+			),
 		);
 	}
 }

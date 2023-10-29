@@ -141,6 +141,7 @@ $core_actions_post = array(
 	'health-check-get-sizes',
 	'toggle-auto-updates',
 	'send-password-reset',
+	'dismiss-notice',
 );
 
 // Deprecated.

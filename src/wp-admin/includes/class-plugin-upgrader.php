@@ -482,6 +482,7 @@ class Plugin_Upgrader extends WP_Upgrader {
 			foreach ( $files as $file ) {
 				$info = get_plugin_data( $file, false, false );
 				if ( ! empty( $info['Name'] ) ) {
+					$info['File']          = str_replace( trailingslashit( WP_PLUGIN_DIR ), '', $file );
 					$this->new_plugin_data = $info;
 					break;
 				}

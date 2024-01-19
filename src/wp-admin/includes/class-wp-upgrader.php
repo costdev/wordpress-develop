@@ -710,6 +710,23 @@ class WP_Upgrader {
 		if ( is_wp_error( $res ) ) {
 			$this->result = $res;
 			return $res;
+		} else {
+			$dependencies = get_file_data(
+				$this->new_plugin_data['File'],
+				array( 'RequiresPlugins' => 'Requires Plugins' ),
+				'plugin'
+			);
+
+			if ( ! empty( $dependencies ) ) {
+				$dependencies = WP_Plugin_Dependencies::sanitize_dependency_slugs( $dependencies );
+				update_site_option(
+					'wp_plugin_dependencies_known_dependencies',
+					array_merge(
+						get_site_option( 'wp_plugin_dependencies_known_dependencies', array() ),
+						array( $this->plugin_data['Slug'] => $dependencies )
+					)
+				);
+			}
 		}
 
 		// Bombard the calling function will all the info which we've just used.

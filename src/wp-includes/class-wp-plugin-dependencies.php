@@ -102,7 +102,25 @@ class WP_Plugin_Dependencies {
 	 * @since 6.5.0
 	 */
 	public static function initialize() {
-		self::read_dependencies_from_plugin_headers();
+		$known_dependencies = get_site_option( 'wp_plugin_dependencies_known_dependencies', array() );
+
+		if ( empty( $known_dependencies ) ) {
+			self::read_dependencies_from_plugin_headers();
+		} else {
+			self::$dependencies = $known_dependencies;
+
+			foreach ( $known_dependencies as $dependent => $dependencies ) {
+				self::$dependency_slugs = array_merge(
+					self::$dependency_slugs,
+					$dependencies
+				);
+
+				foreach ( $dependencies as $dependency ) {
+					self::$dependent_slugs[ $dependency ][] = $dependent;
+				}
+			}
+		}
+
 		self::get_dependency_api_data();
 		self::deactivate_dependents_with_unmet_dependencies();
 	}
@@ -541,6 +559,7 @@ class WP_Plugin_Dependencies {
 			$dependent_slug                   = self::convert_to_slug( $plugin );
 			self::$dependent_slugs[ $plugin ] = $dependent_slug;
 		}
+		update_site_option( 'wp_plugin_dependencies_known_dependencies', self::$dependencies );
 		self::$dependency_slugs = array_unique( self::$dependency_slugs );
 	}
 

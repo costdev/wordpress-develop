@@ -515,6 +515,44 @@ class WP_Plugin_Dependencies {
 	}
 
 	/**
+	 * Sanitizes slugs.
+	 *
+	 * @since 6.5.0
+	 *
+	 * @param string $slugs A comma-separated string of plugin dependency slugs.
+	 * @return array An array of sanitized plugin dependency slugs.
+	 */
+	public static function sanitize_dependency_slugs( $slugs ) {
+		$sanitized_slugs = array();
+		$slugs           = explode( ',', $slugs );
+
+		foreach ( $slugs as $slug ) {
+			$slug = trim( $slug );
+
+			/**
+			 * Filters a plugin dependency's slug before matching to
+			 * the WordPress.org slug format.
+			 *
+			 * Can be used to switch between free and premium plugin slugs, for example.
+			 *
+			 * @since 6.5.0
+			 *
+			 * @param string $slug The slug.
+			 */
+			$slug = apply_filters( 'wp_plugin_dependencies_slug', $slug );
+
+			// Match to WordPress.org slug format.
+			if ( preg_match( '/^[a-z0-9]+(-[a-z0-9]+)*$/mu', $slug ) ) {
+				$sanitized_slugs[] = $slug;
+			}
+		}
+		$sanitized_slugs = array_unique( $sanitized_slugs );
+		sort( $sanitized_slugs );
+
+		return $sanitized_slugs;
+	}
+
+	/**
 	 * Stores the result of 'get_plugins()'.
 	 *
 	 * @since 6.5.0
@@ -563,43 +601,6 @@ class WP_Plugin_Dependencies {
 		self::$dependency_slugs = array_unique( self::$dependency_slugs );
 	}
 
-	/**
-	 * Sanitizes slugs.
-	 *
-	 * @since 6.5.0
-	 *
-	 * @param string $slugs A comma-separated string of plugin dependency slugs.
-	 * @return array An array of sanitized plugin dependency slugs.
-	 */
-	public static function sanitize_dependency_slugs( $slugs ) {
-		$sanitized_slugs = array();
-		$slugs           = explode( ',', $slugs );
-
-		foreach ( $slugs as $slug ) {
-			$slug = trim( $slug );
-
-			/**
-			 * Filters a plugin dependency's slug before matching to
-			 * the WordPress.org slug format.
-			 *
-			 * Can be used to switch between free and premium plugin slugs, for example.
-			 *
-			 * @since 6.5.0
-			 *
-			 * @param string $slug The slug.
-			 */
-			$slug = apply_filters( 'wp_plugin_dependencies_slug', $slug );
-
-			// Match to WordPress.org slug format.
-			if ( preg_match( '/^[a-z0-9]+(-[a-z0-9]+)*$/mu', $slug ) ) {
-				$sanitized_slugs[] = $slug;
-			}
-		}
-		$sanitized_slugs = array_unique( $sanitized_slugs );
-		sort( $sanitized_slugs );
-
-		return $sanitized_slugs;
-	}
 
 	/**
 	 * Gets plugin filepaths for active plugins that depend on the dependency.

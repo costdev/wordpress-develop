@@ -571,7 +571,7 @@ class WP_Plugin_Dependencies {
 	 * @param string $slugs A comma-separated string of plugin dependency slugs.
 	 * @return array An array of sanitized plugin dependency slugs.
 	 */
-	protected static function sanitize_dependency_slugs( $slugs ) {
+	public static function sanitize_dependency_slugs( $slugs ) {
 		$sanitized_slugs = array();
 		$slugs           = explode( ',', $slugs );
 

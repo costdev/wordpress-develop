@@ -419,12 +419,6 @@ wp_plugin_directory_constants();
 
 $GLOBALS['wp_plugin_paths'] = array();
 
-// Load and initialize WP_Plugin_Dependencies.
-require_once ABSPATH . WPINC . '/class-wp-plugin-dependencies.php';
-if ( ! defined( 'WP_RUN_CORE_TESTS' ) ) {
-	WP_Plugin_Dependencies::initialize();
-}
-
 // Load must-use plugins.
 foreach ( wp_get_mu_plugins() as $mu_plugin ) {
 	$_wp_plugin_file = $mu_plugin;
@@ -482,6 +476,12 @@ wp_ssl_constants();
 
 // Create common globals.
 require ABSPATH . WPINC . '/vars.php';
+
+// Load and initialize WP_Plugin_Dependencies.
+require_once ABSPATH . WPINC . '/class-wp-plugin-dependencies.php';
+if ( ! defined( 'WP_RUN_CORE_TESTS' ) ) {
+	WP_Plugin_Dependencies::initialize();
+}
 
 // Make taxonomies and posts available to plugins and themes.
 // @plugin authors: warning: these get registered again on the init hook.

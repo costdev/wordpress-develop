@@ -536,9 +536,19 @@ class WP_Plugin_Dependencies {
 	 *
 	 * @since 6.5.0
 	 *
+	 * @global string $pagenow The filename of the current screen.
+	 *
 	 * @return array An array of plugin data.
 	 */
 	protected static function get_plugins() {
+		global $pagenow;
+
+		if ( 'plugins.php' === $pagenow || 'plugin-install.php' === $pagenow ) {
+			require_once ABSPATH . '/wp-admin/includes/plugin.php';
+			self::$plugins = get_plugins();
+			return self::$plugins;
+		}
+
 		if ( is_array( self::$plugins ) ) {
 			return self::$plugins;
 		}

@@ -376,25 +376,95 @@ class Plugin_Upgrader extends WP_Upgrader {
 				$this->skin->error( $result );
 				$this->skin->after();
 			} else {
-				add_filter( 'upgrader_source_selection', array( $this, 'check_package' ) );
-				$result = $this->run(
-					array(
-						'package'           => $r->package,
-						'destination'       => WP_PLUGIN_DIR,
-						'clear_destination' => true,
-						'clear_working'     => true,
-						'is_multi'          => true,
-						'hook_extra'        => array(
-							'plugin'      => $plugin,
-							'temp_backup' => array(
-								'slug' => dirname( $plugin ),
-								'src'  => WP_PLUGIN_DIR,
-								'dir'  => 'plugins',
-							),
-						),
-					)
-				);
-				remove_filter( 'upgrader_source_selection', array( $this, 'check_package' ) );
+				if ( isset( $r->requires_plugins ) ) {
+					$unmet_dependencies = array();
+
+					require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+					/*
+					 * New dependencies won't be in the current list of dependencies.
+					 *
+					 * Dependencies are indicated by the slug, so the filename won't be known
+					 * at this time.
+					 *
+					 * Build a list of slug => file pairings for current plugins to check
+					 * if the new dependency is installed or active.
+					 */
+					static $plugin_slugs_and_files = array();
+					if ( empty( $plugin_slugs_and_files ) ) {
+						foreach ( array_keys( get_plugins() ) as $plugin_file ) {
+							if ( 'hello.php' === $plugin_file ) {
+								$slug = 'hello-dolly';
+							} else {
+								$slug = str_contains( $plugin_file, '/' ) ? dirname( $plugin_file ) : str_replace( '.php', '', $plugin_file );
+							}
+
+							$plugin_slugs_and_files[ $slug ] = $plugin_file;
+						}
+					}
+
+					require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+
+					foreach ( $r->requires_plugins as $dependency ) {
+						if (
+							// A dependent can only be installed if its dependencies are installed.
+							! isset( $plugin_slugs_and_files[ $dependency ] )
+							// An active dependent requires an active dependency.
+							|| ( $this->skin->plugin_active && is_plugin_inactive( $plugin_slugs_and_files[ $dependency ] ) )
+						) {
+							$dependency_api_response = plugins_api(
+								'plugin_information',
+								array(
+									'slug' => $dependency,
+								)
+							);
+
+							$unmet_dependency_name = ! is_wp_error( $dependency_api_response ) ? $dependency_api_response->name : $dependency;
+							$unmet_dependencies[]  = sprintf(
+								'<a href="%1$s" class="thickbox open-plugin-details-modal" aria-label="%2$s">%3$s</a>',
+								self_admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $dependency . '&section=changelog&TB_iframe=true&width=640&height=662' ),
+								/* translators: %s: Plugin name. */
+								esc_attr( sprintf( __( 'View %s details' ), $unmet_dependency_name ) ),
+								$unmet_dependency_name
+							);
+						}
+					}
+
+					if ( ! empty( $unmet_dependencies ) ) {
+						$result = new WP_Error(
+							'unmet_plugin_dependencies',
+							sprintf(
+								/* translators: %s: A list of modal links for the required plugins. */
+								__( 'The new plugin version requires the following plugins that are missing or inactive: %s.' ),
+								implode( ', ', $unmet_dependencies )
+							)
+						);
+
+						$this->skin->before( $result );
+						$this->skin->error( $result );
+						$this->skin->after();
+					} else {
+						add_filter( 'upgrader_source_selection', array( $this, 'check_package' ) );
+						$result = $this->run(
+							array(
+								'package'           => $r->package,
+								'destination'       => WP_PLUGIN_DIR,
+								'clear_destination' => true,
+								'clear_working'     => true,
+								'is_multi'          => true,
+								'hook_extra'        => array(
+									'plugin'      => $plugin,
+									'temp_backup' => array(
+										'slug' => dirname( $plugin ),
+										'src'  => WP_PLUGIN_DIR,
+										'dir'  => 'plugins',
+									),
+								),
+							)
+						);
+						remove_filter( 'upgrader_source_selection', array( $this, 'check_package' ) );
+					}
+				}
 			}
 
 			$results[ $plugin ] = $result;

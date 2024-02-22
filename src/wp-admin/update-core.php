@@ -542,21 +542,96 @@ function list_plugin_updates() {
 			}
 		}
 
-		$requires_php   = isset( $plugin_data->update->requires_php ) ? $plugin_data->update->requires_php : null;
-		$compatible_php = is_php_version_compatible( $requires_php );
+		$requires_php       = isset( $plugin_data->update->requires_php ) ? $plugin_data->update->requires_php : null;
+		$compatible_php     = is_php_version_compatible( $requires_php );
+		$requires_plugins   = isset( $plugin_data->update->requires_plugins ) ? $plugin_data->update->requires_plugins : array();
+		$unmet_dependencies = array();
 
-		if ( ! $compatible_php && current_user_can( 'update_php' ) ) {
-			$compat .= '<br />' . __( 'This update does not work with your version of PHP.' ) . '&nbsp;';
-			$compat .= sprintf(
-				/* translators: %s: URL to Update PHP page. */
-				__( '<a href="%s">Learn more about updating PHP</a>.' ),
-				esc_url( wp_get_update_php_url() )
-			);
+		if ( is_network_admin() ) {
+			$is_active = is_plugin_active_for_network( $plugin_file );
+		} else {
+			$is_active = is_plugin_active( $plugin_file );
+		}
 
-			$annotation = wp_get_update_php_annotation();
+		/*
+		 * New dependencies won't be in the current list of dependencies.
+		 *
+		 * Dependencies are indicated by the slug, so the filename won't be known
+		 * at this time.
+		 *
+		 * Build a list of slug => file pairings for current plugins to check
+		 * if the new dependency is installed or active.
+		 */
+		static $plugin_slugs_and_files = array();
+		if ( empty( $plugin_slugs_and_files ) ) {
+			foreach ( array_keys( get_plugins() ) as $plugin_file ) {
+				if ( 'hello.php' === $plugin_file ) {
+					$slug = 'hello-dolly';
+				} else {
+					$slug = str_contains( $plugin_file, '/' ) ? dirname( $plugin_file ) : str_replace( '.php', '', $plugin_file );
+				}
 
-			if ( $annotation ) {
-				$compat .= '</p><p><em>' . $annotation . '</em>';
+				$plugin_slugs_and_files[ $slug ] = $plugin_file;
+			}
+		}
+
+		foreach ( $requires_plugins as $dependency ) {
+			if (
+				// A dependent can only be installed if its dependencies are installed.
+				! isset( $plugin_slugs_and_files[ $dependency ] )
+				// An active dependent requires an active dependency.
+				|| ( $is_active && is_plugin_inactive( $plugin_slugs_and_files[ $dependency ] ) )
+			) {
+				$unmet_dependencies[] = $dependency;
+			}
+		}
+		$dependencies_met = empty( $unmet_dependencies );
+
+		if ( current_user_can( 'update_php' ) ) {
+			if ( ! $compatible_php ) {
+				$compat .= '<br />' . __( 'This update does not work with your version of PHP.' ) . '&nbsp;';
+				$compat .= sprintf(
+					/* translators: %s: URL to Update PHP page. */
+					__( '<a href="%s">Learn more about updating PHP</a>.' ),
+					esc_url( wp_get_update_php_url() )
+				);
+
+				$annotation = wp_get_update_php_annotation();
+
+				if ( $annotation ) {
+					$compat .= '</p><p><em>' . $annotation . '</em>';
+				}
+			} elseif ( ! $dependencies_met ) {
+				$unmet_dependency_modal_links = array();
+
+				foreach ( $unmet_dependencies as $unmet_dependency ) {
+					$dependency_api_response = plugins_api(
+						'plugin_information',
+						array(
+							'slug' => $unmet_dependency,
+						)
+					);
+
+					$unmet_dependency_name          = ! is_wp_error( $dependency_api_response ) ? $dependency_api_response->name : $unmet_dependency;
+					$unmet_dependency_modal_links[] = sprintf(
+						'<a href="%1$s" class="thickbox open-plugin-details-modal" aria-label="%2$s">%3$s</a>',
+						self_admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $unmet_dependency . '&section=changelog&TB_iframe=true&width=640&height=662' ),
+						/* translators: %s: Plugin name. */
+						esc_attr( sprintf( __( 'View %s details' ), $unmet_dependency_name ) ),
+						$unmet_dependency_name
+					);
+				}
+				$compat .= sprintf(
+					/* translators: %s: A list of links to required plugins modals. */
+					'<br />' . __( 'This update requires the following missing or inactive plugins: %s.' ),
+					implode( ', ', $unmet_dependency_modal_links ),
+				);
+
+				$annotation = wp_get_update_php_annotation();
+
+				if ( $annotation ) {
+					$compat .= '</p><p><em>' . $annotation . '</em>';
+				}
 			}
 		}
 
@@ -581,7 +656,7 @@ function list_plugin_updates() {
 		?>
 	<tr>
 		<td class="check-column">
-			<?php if ( $compatible_php ) : ?>
+			<?php if ( $compatible_php && $dependencies_met ) : ?>
 				<input type="checkbox" name="checked[]" id="<?php echo $checkbox_id; ?>" value="<?php echo esc_attr( $plugin_file ); ?>" />
 				<label for="<?php echo $checkbox_id; ?>">
 					<span class="screen-reader-text">
@@ -593,8 +668,9 @@ function list_plugin_updates() {
 				</label>
 			<?php endif; ?>
 		</td>
-		<td class="plugin-title"><p>
+		<td class="plugin-title">
 			<?php echo $icon; ?>
+			<p>
 			<strong><?php echo $plugin_data->Name; ?></strong>
 			<?php
 			printf(

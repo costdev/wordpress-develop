@@ -297,6 +297,46 @@ class WP_Automatic_Updater {
 			}
 		}
 
+		// If updating a plugin, ensure the plugin dependency requirements are satisfied.
+		if ( 'plugin' === $type && ! empty( $item->requires_plugins ) ) {
+			static $plugin_slugs_and_files = array();
+
+			require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+			/*
+			 * New dependencies won't be in the current list of dependencies.
+			 *
+			 * Dependencies are indicated by the slug, so the filename won't be known
+			 * at this time.
+			 *
+			 * Build a list of slug => file pairings for current plugins to check
+			 * if the new dependency is installed or active.
+			 */
+			if ( empty( $plugin_slugs_and_files ) ) {
+				foreach ( array_keys( get_plugins() ) as $plugin_file ) {
+					if ( 'hello.php' === $plugin_file ) {
+						$slug = 'hello-dolly';
+					} else {
+						$slug = str_contains( $plugin_file, '/' ) ? dirname( $plugin_file ) : str_replace( '.php', '', $plugin_file );
+					}
+
+					$plugin_slugs_and_files[ $slug ] = $plugin_file;
+				}
+			}
+
+			foreach ( $item->requires_plugins as $dependency ) {
+				// A dependent can only be installed if its dependencies are installed.
+				if ( ! isset( $plugin_slugs_and_files[ $dependency ] ) ) {
+					return false;
+				}
+
+				// An active dependent requires an active dependency.
+				if ( is_plugin_active( $item->plugin ) && is_plugin_inactive( $plugin_slugs_and_files[ $dependency ] ) ) {
+					return false;
+				}
+			}
+		}
+
 		return true;
 	}
 

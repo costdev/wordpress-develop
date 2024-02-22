@@ -501,14 +501,53 @@ function wp_plugin_update_row( $file, $plugin_data ) {
 
 	if ( is_network_admin() || ! is_multisite() ) {
 		if ( is_network_admin() ) {
-			$active_class = is_plugin_active_for_network( $file ) ? ' active' : '';
+			$is_active = is_plugin_active_for_network( $file );
 		} else {
-			$active_class = is_plugin_active( $file ) ? ' active' : '';
+			$is_active = is_plugin_active( $file );
 		}
 
-		$requires_php   = isset( $response->requires_php ) ? $response->requires_php : null;
-		$compatible_php = is_php_version_compatible( $requires_php );
-		$notice_type    = $compatible_php ? 'notice-warning' : 'notice-error';
+		$active_class = $is_active ? ' active' : '';
+
+		$requires_php       = isset( $response->requires_php ) ? $response->requires_php : null;
+		$compatible_php     = is_php_version_compatible( $requires_php );
+		$requires_plugins   = isset( $response->requires_plugins ) ? $response->requires_plugins : array();
+		$unmet_dependencies = array();
+
+		/*
+		 * New dependencies won't be in the current list of dependencies.
+		 *
+		 * Dependencies are indicated by the slug, so the filename won't be known
+		 * at this time.
+		 *
+		 * Build a list of slug => file pairings for current plugins to check
+		 * if the new dependency is installed or active.
+		 */
+		static $plugin_slugs_and_files = array();
+		if ( empty( $plugin_slugs_and_files ) ) {
+			foreach ( array_keys( get_plugins() ) as $plugin_file ) {
+				if ( 'hello.php' === $plugin_file ) {
+					$slug = 'hello-dolly';
+				} else {
+					$slug = str_contains( $plugin_file, '/' ) ? dirname( $plugin_file ) : str_replace( '.php', '', $plugin_file );
+				}
+
+				$plugin_slugs_and_files[ $slug ] = $plugin_file;
+			}
+		}
+
+		foreach ( $requires_plugins as $dependency ) {
+			if (
+				// A dependent can only be installed if its dependencies are installed.
+				! isset( $plugin_slugs_and_files[ $dependency ] )
+				// An active dependent requires an active dependency.
+				|| ( $is_active && is_plugin_inactive( $plugin_slugs_and_files[ $dependency ] ) )
+			) {
+				$unmet_dependencies[] = $dependency;
+			}
+		}
+		$dependencies_met = empty( $unmet_dependencies );
+
+		$notice_type = $compatible_php && $dependencies_met ? 'notice-warning' : 'notice-error';
 
 		printf(
 			'<tr class="plugin-update-tr%s" id="%s" data-slug="%s" data-plugin="%s">' .
@@ -549,7 +588,43 @@ function wp_plugin_update_row( $file, $plugin_data ) {
 				esc_attr( $response->new_version )
 			);
 		} else {
-			if ( $compatible_php ) {
+			if ( ! $dependencies_met ) {
+				$unmet_dependency_modal_links = array();
+
+				require_once ABSPATH . 'wp-admin/includes/plugin-install.php';
+				foreach ( $unmet_dependencies as $unmet_dependency ) {
+					$dependency_api_response = plugins_api(
+						'plugin_information',
+						array(
+							'slug' => $unmet_dependency,
+						)
+					);
+
+					$unmet_dependency_name          = ! is_wp_error( $dependency_api_response ) ? $dependency_api_response->name : $unmet_dependency;
+					$unmet_dependency_modal_links[] = sprintf(
+						'<a href="%1$s" class="thickbox open-plugin-details-modal" aria-label="%2$s">%3$s</a>',
+						self_admin_url( 'plugin-install.php?tab=plugin-information&plugin=' . $unmet_dependency . '&section=changelog&TB_iframe=true&width=640&height=662' ),
+						/* translators: %s: Plugin name. */
+						esc_attr( sprintf( __( 'View %s details' ), $unmet_dependency_name ) ),
+						$unmet_dependency_name
+					);
+				}
+				printf(
+					/* translators: 1: Plugin name, 2: A list of links to required plugins modals, 3: Details URL, 4: Additional link attributes, 5: Version number. */
+					__( 'There is a new version of %1$s available, but the following required plugins are missing or inactive: %2$s. <a href="%3$s" %4$s>View version %5$s details</a>' ),
+					$plugin_name,
+					implode( ', ', $unmet_dependency_modal_links ),
+					esc_url( $details_url ),
+					sprintf(
+						'class="thickbox open-plugin-details-modal" aria-label="%s"',
+						/* translators: 1: Plugin name, 2: Version number. */
+						esc_attr( sprintf( __( 'View %1$s version %2$s details' ), $plugin_name, $response->new_version ) )
+					),
+					esc_attr( $response->new_version ),
+					esc_url( wp_get_update_php_url() )
+				);
+				wp_update_php_annotation( '<br><em>', '</em>' );
+			} elseif ( $compatible_php ) {
 				printf(
 					/* translators: 1: Plugin name, 2: Details URL, 3: Additional link attributes, 4: Version number, 5: Update URL, 6: Additional link attributes. */
 					__( 'There is a new version of %1$s available. <a href="%2$s" %3$s>View version %4$s details</a> or <a href="%5$s" %6$s>update now</a>.' ),

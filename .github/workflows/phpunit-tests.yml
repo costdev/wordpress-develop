@@ -36,7 +36,7 @@ jobs:
   #
   test-with-mysql:
     name: PHP ${{ matrix.php }}
-    uses: WordPress/wordpress-develop/.github/workflows/reusable-phpunit-tests.yml@trunk
+    uses: costdev/wordpress-develop/.github/workflows/reusable-phpunit-tests.yml@add-html5lib-tests-to-phpunit-workflows
     permissions:
       contents: read
     secrets: inherit
@@ -51,6 +51,7 @@ jobs:
         tests-domain: [ 'example.org' ]
         multisite: [ false, true ]
         memcached: [ false ]
+        html5lib-tests: [ false ]
 
         include:
           # Include jobs for PHP 7.4 with memcached.
@@ -92,6 +93,42 @@ jobs:
             multisite: false
             memcached: false
             report: true
+          # Include html5lib tests.
+          - os: ubuntu-latest
+            php: '7.2'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '7.3'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '7.4'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '8.0'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '8.1'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '8.2'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
+          - os: ubuntu-latest
+            php: '8.3'
+            db-version: '5.7'
+            multisite: false
+            html5lib-tests: true
     with:
       os: ${{ matrix.os }}
       php: ${{ matrix.php }}
@@ -99,6 +136,7 @@ jobs:
       db-version: ${{ matrix.db-version }}
       multisite: ${{ matrix.multisite }}
       memcached: ${{ matrix.memcached }}
+      html5lib-tests: ${{ matrix.html5lib-tests }}
       phpunit-config: ${{ matrix.multisite && 'tests/phpunit/multisite.xml' || 'phpunit.xml.dist' }}
       tests-domain: ${{ matrix.tests-domain }}
       report: ${{ matrix.report || false }}
